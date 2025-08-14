@@ -267,6 +267,20 @@ export class Kraken implements INodeType {
 				description: 'Time interval for OHLC data',
 			},
 			{
+				displayName: 'Since (Timestamp)',
+				name: 'since',
+				type: 'string',
+				displayOptions: {
+					show: {
+						resource: ['marketData'],
+						operation: ['getOHLC'],
+					},
+				},
+				default: '',
+				description:
+					'UTC timestamp to return OHLC entries since (for incremental updates). Example: 1688671200.',
+			},
+			{
 				displayName: 'Count',
 				name: 'count',
 				type: 'number',
@@ -548,10 +562,18 @@ export class Kraken implements INodeType {
 						case 'getOHLC':
 							const ohlcPair = this.getNodeParameter('pair', i) as string;
 							const interval = this.getNodeParameter('interval', i) as number;
-							responseData = await kraken.ohlc({
+							const since = this.getNodeParameter('since', i) as string;
+
+							const ohlcParams: any = {
 								pair: ohlcPair,
 								interval,
-							});
+							};
+
+							if (since) {
+								ohlcParams.since = parseInt(since, 10);
+							}
+
+							responseData = await kraken.ohlc(ohlcParams);
 							break;
 
 						case 'getOrderBook':
