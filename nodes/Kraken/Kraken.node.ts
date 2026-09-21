@@ -79,7 +79,7 @@ export class Kraken implements INodeType {
 		displayName: 'Kraken',
 		name: 'kraken',
 		icon: 'file:krakenPro.svg',
-		group: ['finance'],
+		group: ['input'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Interact with Kraken cryptocurrency exchange API',
