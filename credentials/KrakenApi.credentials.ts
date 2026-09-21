@@ -1,8 +1,9 @@
-import { ICredentialType, INodeProperties } from 'n8n-workflow';
+import { ICredentialType, Icon, INodeProperties } from 'n8n-workflow';
 
 export class KrakenApi implements ICredentialType {
 	name = 'krakenApi';
 	displayName = 'Kraken API';
+	icon: Icon = 'file:../nodes/Kraken/krakenPro.svg';
 	documentationUrl = 'https://docs.kraken.com/rest/';
 	properties: INodeProperties[] = [
 		{

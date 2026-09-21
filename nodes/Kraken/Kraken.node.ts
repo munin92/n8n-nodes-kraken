@@ -4,19 +4,18 @@ import {
 	ICredentialsDecrypted,
 	IDataObject,
 	IExecuteFunctions,
+	IHttpRequestMethods,
 	INodeCredentialTestResult,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	JsonObject,
+	NodeApiError,
 	NodeConnectionType,
 	NodeOperationError,
-	sleep,
 } from 'n8n-workflow';
 
-import { Kraken as KrakenClient } from 'node-kraken-api';
-
-const RATE_LIMIT_RETRIES = 6;
-const RATE_LIMIT_WAIT_MS = 10_000;
+import { KrakenApiError, KrakenClient } from './KrakenClient';
 
 // Without an end Kraken counts up to "now" on every page, so entries arriving mid-run shift the offsets.
 export function timeRange(
@@ -36,37 +35,23 @@ export function timeRange(
 	return range;
 }
 
-// Kraken pages private history 50 entries at a time and answers bursts with EAPI:Rate limit exceeded.
+// Kraken pages private history 50 entries at a time; the client retries rate limits.
 export async function collectPages(
-	fetchPage: (ofs: number) => Promise<{ entries: Record<string, object | null>; count: number }>,
+	fetchPage: (ofs: number) => Promise<{ entries: IDataObject; count: number }>,
 	returnAll: boolean,
 	limit: number,
-	wait: (ms: number) => Promise<void> = sleep,
 ): Promise<IDataObject[]> {
 	const results: IDataObject[] = [];
 	const seen = new Set<string>();
 	let offset = 0;
 	for (;;) {
-		let page: { entries: Record<string, object | null>; count: number } | undefined;
-		for (let attempt = 0; page === undefined; attempt++) {
-			try {
-				page = await fetchPage(offset);
-			} catch (error) {
-				if (
-					attempt >= RATE_LIMIT_RETRIES ||
-					!String((error as Error).message).includes('Rate limit')
-				) {
-					throw error;
-				}
-				await wait(RATE_LIMIT_WAIT_MS);
-			}
-		}
+		const page = await fetchPage(offset);
 		const ids = Object.keys(page.entries);
 		offset += ids.length;
 		for (const id of ids) {
 			if (seen.has(id)) continue;
 			seen.add(id);
-			results.push({ id, ...(page.entries[id] ?? {}) });
+			results.push({ id, ...((page.entries[id] as IDataObject | null) ?? {}) });
 		}
 		if (ids.length === 0 || offset >= page.count) break;
 		if (!returnAll && results.length >= limit) break;
@@ -81,6 +66,7 @@ export class Kraken implements INodeType {
 		icon: 'file:krakenPro.svg',
 		group: ['input'],
 		version: 1,
+		usableAsTool: true,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Interact with Kraken cryptocurrency exchange API',
 		defaults: {
@@ -689,11 +675,20 @@ export class Kraken implements INodeType {
 			): Promise<INodeCredentialTestResult> {
 				const data = (credential.data ?? {}) as IDataObject;
 				try {
-					const kraken = new KrakenClient({
-						key: String(data.apiKey ?? ''),
-						secret: String(data.apiSecret ?? ''),
-					});
-					await kraken.balance();
+					const kraken = new KrakenClient(
+						async (req) =>
+							// eslint-disable-next-line @n8n/community-nodes/no-deprecated-workflow-functions
+							await this.helpers.request({
+								method: req.method,
+								uri: req.url,
+								headers: req.headers,
+								body: req.body,
+								json: true,
+							}),
+						String(data.apiKey ?? ''),
+						String(data.apiSecret ?? ''),
+					);
+					await kraken.private('Balance');
 					return { status: 'OK', message: 'Connected' };
 				} catch (error) {
 					return { status: 'Error', message: (error as Error).message };
@@ -707,27 +702,32 @@ export class Kraken implements INodeType {
 		const returnData: INodeExecutionData[] = [];
 
 		const credentials = await this.getCredentials('krakenApi');
-		const apiKey = credentials.apiKey as string;
-		const apiSecret = credentials.apiSecret as string;
-
-		// Initialize Kraken client
-		const kraken = new KrakenClient({
-			key: apiKey,
-			secret: apiSecret,
-		});
+		const kraken = new KrakenClient(
+			async (req) =>
+				await this.helpers.httpRequest({
+					method: req.method as IHttpRequestMethods,
+					url: req.url,
+					headers: req.headers,
+					body: req.body,
+					json: true,
+					timeout: 30_000,
+				}),
+			String(credentials.apiKey ?? ''),
+			String(credentials.apiSecret ?? ''),
+		);
 
 		for (let i = 0; i < items.length; i++) {
 			try {
 				const resource = this.getNodeParameter('resource', i) as string;
 				const operation = this.getNodeParameter('operation', i) as string;
 
-				let responseData: any;
+				let responseData: IDataObject | IDataObject[];
 
 				if (resource === 'marketData') {
 					switch (operation) {
 						case 'getAssetInfo':
 							const asset = this.getNodeParameter('asset', i) as string;
-							responseData = await kraken.assets(asset ? { asset } : {});
+							responseData = await kraken.public('Assets', asset ? { asset } : {});
 							break;
 
 						case 'getAssetPairs':
@@ -735,7 +735,7 @@ export class Kraken implements INodeType {
 							const infoType = this.getNodeParameter('infoType', i) as string;
 							const countryCode = this.getNodeParameter('countryCode', i) as string;
 
-							const assetPairsParams: any = {};
+							const assetPairsParams: IDataObject = {};
 
 							if (assetPairs) {
 								assetPairsParams.pair = assetPairs;
@@ -747,12 +747,12 @@ export class Kraken implements INodeType {
 								assetPairsParams.country_code = countryCode;
 							}
 
-							responseData = await kraken.assetPairs(assetPairsParams);
+							responseData = await kraken.public('AssetPairs', assetPairsParams);
 							break;
 
 						case 'getTicker':
 							const tickerPair = this.getNodeParameter('pair', i) as string;
-							responseData = await kraken.ticker({ pair: tickerPair });
+							responseData = await kraken.public('Ticker', { pair: tickerPair });
 							break;
 
 						case 'getOHLC':
@@ -760,7 +760,7 @@ export class Kraken implements INodeType {
 							const interval = this.getNodeParameter('interval', i) as number;
 							const since = this.getNodeParameter('since', i) as string;
 
-							const ohlcParams: any = {
+							const ohlcParams: IDataObject = {
 								pair: ohlcPair,
 								interval,
 							};
@@ -769,13 +769,13 @@ export class Kraken implements INodeType {
 								ohlcParams.since = parseInt(since, 10);
 							}
 
-							responseData = await kraken.ohlc(ohlcParams);
+							responseData = await kraken.public('OHLC', ohlcParams);
 							break;
 
 						case 'getOrderBook':
 							const orderBookPair = this.getNodeParameter('pair', i) as string;
 							const count = this.getNodeParameter('count', i) as number;
-							responseData = await kraken.depth({
+							responseData = await kraken.public('Depth', {
 								pair: orderBookPair,
 								count,
 							});
@@ -783,7 +783,7 @@ export class Kraken implements INodeType {
 
 						case 'getRecentTrades':
 							const tradesPair = this.getNodeParameter('pair', i) as string;
-							responseData = await kraken.trades({ pair: tradesPair });
+							responseData = await kraken.public('Trades', { pair: tradesPair });
 							break;
 
 						default:
@@ -796,19 +796,19 @@ export class Kraken implements INodeType {
 				} else if (resource === 'account') {
 					switch (operation) {
 						case 'getBalance':
-							responseData = await kraken.balance();
+							responseData = await kraken.private('Balance');
 							break;
 
 						case 'getTradeBalance':
-							responseData = await kraken.tradeBalance();
+							responseData = await kraken.private('TradeBalance');
 							break;
 
 						case 'getOpenOrders':
-							responseData = await kraken.openOrders();
+							responseData = await kraken.private('OpenOrders');
 							break;
 
 						case 'getClosedOrders':
-							responseData = await kraken.closedOrders();
+							responseData = await kraken.private('ClosedOrders');
 							break;
 
 						case 'getLedgers': {
@@ -819,8 +819,11 @@ export class Kraken implements INodeType {
 							if (filters.type) options.type = String(filters.type);
 							responseData = await collectPages(
 								async (ofs) => {
-									const page = await kraken.ledgers({ ...options, ofs });
-									return { entries: page.ledger ?? {}, count: page.count ?? 0 };
+									const page = await kraken.private('Ledgers', { ...options, ofs });
+									return {
+										entries: (page.ledger as IDataObject) ?? {},
+										count: Number(page.count ?? 0),
+									};
 								},
 								this.getNodeParameter('returnAll', i) as boolean,
 								this.getNodeParameter('limit', i, 50) as number,
@@ -833,8 +836,11 @@ export class Kraken implements INodeType {
 							const options = timeRange(filters);
 							responseData = await collectPages(
 								async (ofs) => {
-									const page = await kraken.tradesHistory({ ...options, ofs });
-									return { entries: page.trades ?? {}, count: page.count ?? 0 };
+									const page = await kraken.private('TradesHistory', { ...options, ofs });
+									return {
+										entries: (page.trades as IDataObject) ?? {},
+										count: Number(page.count ?? 0),
+									};
 								},
 								this.getNodeParameter('returnAll', i) as boolean,
 								this.getNodeParameter('limit', i, 50) as number,
@@ -857,9 +863,12 @@ export class Kraken implements INodeType {
 							const ordertype = this.getNodeParameter('orderSubType', i) as string;
 							const volume = this.getNodeParameter('volume', i) as string;
 							const price = this.getNodeParameter('price', i) as string;
-							const additionalOptions = this.getNodeParameter('additionalOptions', i) as any;
+							const additionalOptions = this.getNodeParameter(
+								'additionalOptions',
+								i,
+							) as IDataObject;
 
-							const orderParams: any = {
+							const orderParams: IDataObject = {
 								pair,
 								type,
 								ordertype,
@@ -881,8 +890,9 @@ export class Kraken implements INodeType {
 							if (additionalOptions.leverage) {
 								orderParams.leverage = additionalOptions.leverage;
 							}
-							if (additionalOptions.oflags && additionalOptions.oflags.length > 0) {
-								orderParams.oflags = additionalOptions.oflags.join(',');
+							const oflags = (additionalOptions.oflags as string[] | undefined) ?? [];
+							if (oflags.length > 0) {
+								orderParams.oflags = oflags.join(',');
 							}
 							if (additionalOptions.timeinforce) {
 								orderParams.timeinforce = additionalOptions.timeinforce;
@@ -906,12 +916,12 @@ export class Kraken implements INodeType {
 								orderParams.validate = additionalOptions.validate;
 							}
 
-							responseData = await kraken.addOrder(orderParams);
+							responseData = await kraken.private('AddOrder', orderParams);
 							break;
 
 						case 'cancelOrder':
 							const txid = this.getNodeParameter('txid', i) as string;
-							responseData = await kraken.cancelOrder({ txid });
+							responseData = await kraken.private('CancelOrder', { txid });
 							break;
 
 						default:
@@ -938,7 +948,13 @@ export class Kraken implements INodeType {
 					});
 					continue;
 				}
-				throw error;
+				if (error instanceof KrakenApiError) {
+					throw new NodeApiError(this.getNode(), { error: error.errors } as JsonObject, {
+						message: error.message,
+						itemIndex: i,
+					});
+				}
+				throw new NodeOperationError(this.getNode(), error as Error, { itemIndex: i });
 			}
 		}
 
