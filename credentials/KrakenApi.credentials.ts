@@ -1,8 +1,9 @@
-import { ICredentialTestRequest, ICredentialType, INodeProperties } from 'n8n-workflow';
+import { ICredentialType, Icon, INodeProperties } from 'n8n-workflow';
 
 export class KrakenApi implements ICredentialType {
 	name = 'krakenApi';
 	displayName = 'Kraken API';
+	icon: Icon = 'file:../nodes/Kraken/krakenPro.svg';
 	documentationUrl = 'https://docs.kraken.com/rest/';
 	properties: INodeProperties[] = [
 		{
@@ -26,13 +27,4 @@ export class KrakenApi implements ICredentialType {
 			description: 'Your Kraken API secret',
 		},
 	];
-
-	// The block below tells how this credential can be tested
-	test: ICredentialTestRequest = {
-		request: {
-			baseURL: 'https://api.kraken.com',
-			url: '/0/private/Balance',
-			method: 'POST',
-		},
-	};
 }
