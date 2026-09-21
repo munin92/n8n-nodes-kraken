@@ -1,5 +1,9 @@
 import {
+	ICredentialTestFunctions,
+	ICredentialsDecrypted,
+	IDataObject,
 	IExecuteFunctions,
+	INodeCredentialTestResult,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
@@ -21,12 +25,14 @@ export class Kraken implements INodeType {
 		defaults: {
 			name: 'Kraken',
 		},
-		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main],
+		// String literals: an older shared n8n-workflow copy lacks the constant, which n8n reports as "Class could not be found".
+		inputs: ['main' as NodeConnectionType],
+		outputs: ['main' as NodeConnectionType],
 		credentials: [
 			{
 				name: 'krakenApi',
 				required: true,
+				testedBy: 'krakenApiTest',
 			},
 		],
 		properties: [
@@ -504,6 +510,27 @@ export class Kraken implements INodeType {
 				description: 'Transaction ID of the order to cancel',
 			},
 		],
+	};
+
+	methods = {
+		credentialTest: {
+			async krakenApiTest(
+				this: ICredentialTestFunctions,
+				credential: ICredentialsDecrypted,
+			): Promise<INodeCredentialTestResult> {
+				const data = (credential.data ?? {}) as IDataObject;
+				try {
+					const kraken = new KrakenClient({
+						key: String(data.apiKey ?? ''),
+						secret: String(data.apiSecret ?? ''),
+					});
+					await kraken.balance();
+					return { status: 'OK', message: 'Connected' };
+				} catch (error) {
+					return { status: 'Error', message: (error as Error).message };
+				}
+			},
+		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
