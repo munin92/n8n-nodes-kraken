@@ -1,4 +1,8 @@
-# n8n-nodes-kraken
+# @munin92/n8n-nodes-kraken
+
+Fork of [DirectorVector/n8n-nodes-kraken](https://github.com/DirectorVector/n8n-nodes-kraken)
+that adds **Get Ledgers** and paginated ledger/trade history (one item per entry, Kraken id as `id`).
+Install in n8n as `@munin92/n8n-nodes-kraken`.
 
 This package provides an n8n node with multiple operations to utilize the Kraken cryptocurrency exchange API.
 

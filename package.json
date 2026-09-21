@@ -1,7 +1,7 @@
 {
-  "name": "n8n-nodes-kraken",
+  "name": "@munin92/n8n-nodes-kraken",
   "version": "1.3.0",
-  "description": "n8n community node for Kraken cryptocurrency exchange API",
+  "description": "n8n community node for the Kraken exchange API, with paginated ledger and trade history.",
   "keywords": [
     "n8n-community-node-package",
     "kraken",
@@ -12,17 +12,21 @@
     "bitcoin"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/DirectorVector/n8n-nodes-kraken",
+  "homepage": "https://github.com/munin92/n8n-nodes-kraken",
   "author": {
-    "name": "DirectorVector",
-    "email": "bricethrower@gmail.com"
+    "name": "munin92",
+    "email": "lippitz.marian@gmail.com"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DirectorVector/n8n-nodes-kraken.git"
+    "url": "git+https://github.com/munin92/n8n-nodes-kraken.git"
   },
   "engines": {
     "node": ">=20.15"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "main": "index.js",
   "scripts": {
@@ -32,14 +36,17 @@
     "format:check": "prettier nodes credentials --check",
     "lint": "eslint nodes credentials package.json",
     "lintfix": "eslint nodes credentials package.json --fix",
-    "test": "npm run test:api && npm run test:enhanced && npm run test:comprehensive",
+    "test": "node --test test/*.test.js",
     "test:api": "node test-node.js",
     "test:enhanced": "node test-asset-pairs.js",
     "test:comprehensive": "node test-comprehensive.js",
-    "test:ci": "npm run lint && npm run format:check && npm run build && npm run test",
+    "test:ci": "npm run lint && npm run format:check && npm run build && npm test && npm run test:built",
     "security": "npm audit --audit-level high",
     "security:fix": "npm audit fix",
-    "prepublishOnly": "npm run build && npm run lint -c .eslintrc.prepublish.js nodes credentials package.json"
+    "prepublishOnly": "npm run build && eslint -c .eslintrc.prepublish.js nodes credentials package.json",
+    "test:built": "node --test test/built/*.test.mjs",
+    "test:live": "npm run test:api && npm run test:enhanced && npm run test:comprehensive",
+    "release": "semantic-release"
   },
   "files": [
     "dist"
@@ -54,11 +61,14 @@
     ]
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/git": "^11.0.1",
     "@typescript-eslint/parser": "~8.32.0",
     "eslint": "^8.57.1",
     "eslint-plugin-n8n-nodes-base": "^1.16.3",
     "gulp": "^5.0.1",
     "prettier": "^3.6.2",
+    "semantic-release": "^25.0.9",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {

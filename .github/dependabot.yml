@@ -1,0 +1,52 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    # chore statt fix/feat: semantic-release veroeffentlicht sonst bei jedem
+    # gemergten Dependabot-PR eine neue Version.
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    groups:
+      n8n-lint:
+        patterns:
+          - eslint-plugin-n8n-nodes-base
+          - "@typescript-eslint/*"
+      semantic-release:
+        patterns:
+          - semantic-release
+          - "@semantic-release/*"
+    ignore:
+      # .eslintrc.js ist Legacy-Config; eslint 9 verlangt erst die Flat-Config-Migration.
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      # peerDependency: die Version kommt von der n8n-Instanz, die die Node laedt.
+      - dependency-name: n8n-workflow
+      # TypeScript 7 ist die native Go-Portierung und bricht Werkzeuge, die an
+      # der Compiler-API haengen. Bis 6 mitgehen, 7 nicht.
+      - dependency-name: typescript
+        versions: [">=7"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]
