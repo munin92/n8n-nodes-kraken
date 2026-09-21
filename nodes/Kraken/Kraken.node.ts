@@ -1,4 +1,5 @@
 import {
+	ApplicationError,
 	ICredentialTestFunctions,
 	ICredentialsDecrypted,
 	IDataObject,
@@ -17,11 +18,21 @@ import { Kraken as KrakenClient } from 'node-kraken-api';
 const RATE_LIMIT_RETRIES = 6;
 const RATE_LIMIT_WAIT_MS = 10_000;
 
-function timeRange(filters: IDataObject): { start?: number; end?: number } {
-	const toUnix = (value: unknown) => Math.floor(new Date(String(value)).getTime() / 1000);
-	const range: { start?: number; end?: number } = {};
-	if (filters.start) range.start = toUnix(filters.start);
-	if (filters.end) range.end = toUnix(filters.end);
+// Without an end Kraken counts up to "now" on every page, so entries arriving mid-run shift the offsets.
+export function timeRange(
+	filters: IDataObject,
+	nowSeconds = Math.floor(Date.now() / 1000),
+): { start?: number; end: number } {
+	const toUnix = (field: 'start' | 'end') => {
+		const seconds = Math.floor(new Date(String(filters[field])).getTime() / 1000);
+		if (Number.isNaN(seconds))
+			throw new ApplicationError(`Filter "${field}" is not a valid date: ${filters[field]}`);
+		return seconds;
+	};
+	const range: { start?: number; end: number } = {
+		end: filters.end ? toUnix('end') : nowSeconds,
+	};
+	if (filters.start) range.start = toUnix('start');
 	return range;
 }
 
@@ -33,11 +44,13 @@ export async function collectPages(
 	wait: (ms: number) => Promise<void> = sleep,
 ): Promise<IDataObject[]> {
 	const results: IDataObject[] = [];
+	const seen = new Set<string>();
+	let offset = 0;
 	for (;;) {
 		let page: { entries: Record<string, object | null>; count: number } | undefined;
 		for (let attempt = 0; page === undefined; attempt++) {
 			try {
-				page = await fetchPage(results.length);
+				page = await fetchPage(offset);
 			} catch (error) {
 				if (
 					attempt >= RATE_LIMIT_RETRIES ||
@@ -49,8 +62,13 @@ export async function collectPages(
 			}
 		}
 		const ids = Object.keys(page.entries);
-		for (const id of ids) results.push({ id, ...(page.entries[id] ?? {}) });
-		if (ids.length === 0 || results.length >= page.count) break;
+		offset += ids.length;
+		for (const id of ids) {
+			if (seen.has(id)) continue;
+			seen.add(id);
+			results.push({ id, ...(page.entries[id] ?? {}) });
+		}
+		if (ids.length === 0 || offset >= page.count) break;
 		if (!returnAll && results.length >= limit) break;
 	}
 	return returnAll ? results : results.slice(0, limit);
@@ -795,7 +813,7 @@ export class Kraken implements INodeType {
 
 						case 'getLedgers': {
 							const filters = this.getNodeParameter('filters', i, {}) as IDataObject;
-							const options: { start?: number; end?: number; asset?: string; type?: string } =
+							const options: { start?: number; end: number; asset?: string; type?: string } =
 								timeRange(filters);
 							if (filters.asset) options.asset = String(filters.asset);
 							if (filters.type) options.type = String(filters.type);

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { collectPages } = require('../dist/nodes/Kraken/Kraken.node.js');
+const { collectPages, timeRange } = require('../dist/nodes/Kraken/Kraken.node.js');
 
 const noWait = async () => {};
 
@@ -63,4 +63,41 @@ test('rate limit is retried, other errors are not', async () => {
 		/Invalid key/,
 	);
 	assert.strictEqual(attempts, 1);
+});
+
+test('overlapping pages are deduplicated and offset counts raw entries', async () => {
+	const calls = [];
+	const pages = {
+		0: { L3: {}, L2: {} },
+		2: { L2: {}, L1: {} },
+		4: { L0: {} },
+	};
+	const rows = await collectPages(
+		async (ofs) => {
+			calls.push(ofs);
+			return { entries: pages[ofs] ?? {}, count: 5 };
+		},
+		true,
+		50,
+		noWait,
+	);
+	assert.deepStrictEqual(
+		rows.map((r) => r.id),
+		['L3', 'L2', 'L1', 'L0'],
+	);
+	assert.deepStrictEqual(calls, [0, 2, 4]);
+});
+
+test('timeRange pins end to now when unset', () => {
+	assert.deepStrictEqual(timeRange({}, 1700000000), { end: 1700000000 });
+	assert.deepStrictEqual(timeRange({ start: '2026-09-01T00:00:00Z' }, 1700000000), {
+		start: 1788220800,
+		end: 1700000000,
+	});
+	assert.deepStrictEqual(timeRange({ end: '2026-09-02T00:00:00Z' }, 1), { end: 1788307200 });
+});
+
+test('timeRange rejects unparseable dates instead of sending NaN', () => {
+	assert.throws(() => timeRange({ start: 'Invalid DateTime' }), /"start" is not a valid date/);
+	assert.throws(() => timeRange({ end: 'nope' }), /"end" is not a valid date/);
 });
