@@ -30,12 +30,12 @@
   },
   "main": "index.js",
   "scripts": {
-    "build": "npx rimraf dist && tsc && gulp build:icons",
+    "build": "rm -rf dist && tsc && node scripts/copy-icons.mjs",
     "dev": "tsc --watch",
     "format": "prettier nodes credentials --write",
     "format:check": "prettier nodes credentials --check",
-    "lint": "eslint nodes credentials package.json",
-    "lintfix": "eslint nodes credentials package.json --fix",
+    "lint": "eslint .",
+    "lintfix": "eslint . --fix",
     "test": "node --test test/*.test.js",
     "test:api": "node test-node.js",
     "test:enhanced": "node test-asset-pairs.js",
@@ -43,7 +43,7 @@
     "test:ci": "npm run lint && npm run format:check && npm run build && npm test && npm run test:built",
     "security": "npm audit --audit-level high",
     "security:fix": "npm audit fix",
-    "prepublishOnly": "npm run build && eslint -c .eslintrc.prepublish.js nodes credentials package.json",
+    "prepublishOnly": "npm run build && npm run lint && npm test && npm run test:built",
     "test:built": "node --test test/built/*.test.mjs",
     "test:live": "npm run test:api && npm run test:enhanced && npm run test:comprehensive",
     "release": "semantic-release"
@@ -61,23 +61,23 @@
     ]
   },
   "devDependencies": {
+    "@n8n/eslint-plugin-community-nodes": "^0.32.1",
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/git": "^11.0.1",
-    "@typescript-eslint/parser": "~8.32.0",
-    "eslint": "^8.57.1",
-    "eslint-plugin-n8n-nodes-base": "^1.16.3",
-    "gulp": "^5.0.1",
+    "@types/node": "^24.13.6",
+    "eslint": "9.29.0",
+    "n8n-workflow": "~2.39.3",
     "prettier": "^3.6.2",
     "semantic-release": "^25.0.9",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.70.1"
   },
   "peerDependencies": {
-    "n8n-workflow": "^1.82.0"
+    "n8n-workflow": "*"
   },
-  "overrides": {
-    "form-data": "^4.0.4"
-  },
-  "dependencies": {
-    "node-kraken-api": "^2.2.2"
+  "allowScripts": {
+    "isolated-vm": false,
+    "cpu-features": false,
+    "ssh2": false
   }
 }
