@@ -1,6 +1,6 @@
 {
   "name": "@munin92/n8n-nodes-kraken",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "description": "n8n community node for the Kraken exchange API, with paginated ledger and trade history.",
   "keywords": [
     "n8n-community-node-package",
