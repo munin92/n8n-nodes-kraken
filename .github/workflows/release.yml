@@ -36,7 +36,7 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run test:built
-      # Normalfall ohne NPM_TOKEN: @semantic-release/npm >= 13 tauscht den OIDC-Token der
+      # Kein NPM_TOKEN: @semantic-release/npm >= 13 tauscht den OIDC-Token der
       # Action gegen ein kurzlebiges Registry-Token. Voraussetzung ist ein auf
       # npmjs.com hinterlegter Trusted Publisher fuer dieses Repo und genau
       # diese Workflow-Datei.
@@ -44,5 +44,3 @@ jobs:
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Nur fuers erste Release (Trusted Publishing braucht ein existierendes Paket), danach Secret loeschen.
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
